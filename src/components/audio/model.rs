@@ -3,8 +3,6 @@
 
 use cosmic_settings_audio_client::{self as audio_client};
 
-pub type NodeId = u32;
-
 #[derive(Debug, Default)]
 pub struct Model {
     sinks: Nodes,
@@ -15,8 +13,11 @@ pub struct Model {
     default_source: Option<NodeId>,
 }
 
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+struct NodeId(u32);
+
 #[derive(Debug, Default)]
-pub struct Nodes {
+struct Nodes {
     active: Option<usize>,
     mute: Vec<bool>,
     id: Vec<NodeId>,
@@ -24,7 +25,7 @@ pub struct Nodes {
 }
 
 impl Nodes {
-    pub fn remove(&mut self, node_id: u32) -> bool {
+    pub fn remove(&mut self, node_id: NodeId) -> bool {
         let Some(pos) = self.id.iter().position(|id| node_id == *id) else {
             return false;
         };
@@ -53,6 +54,7 @@ impl Model {
     pub fn update(&mut self, event: audio_client::Event) -> Option<Response> {
         match event {
             audio_client::Event::NodeMute(node_id, mute) => {
+                let node_id = NodeId(node_id);
                 if let Some(pos) = self.sinks.id.iter().position(|id| node_id == *id) {
                     self.sinks.mute[pos] = mute;
                     if self.sinks.active == Some(pos) && self.active_sink.mute != mute {
@@ -69,6 +71,7 @@ impl Model {
             }
 
             audio_client::Event::NodeVolume(node_id, volume, _balance) => {
+                let node_id = NodeId(node_id);
                 if let Some(pos) = self.sinks.id.iter().position(|id| node_id == *id) {
                     self.sinks.volume[pos] = volume;
                     if self.default_sink.as_ref().is_some_and(|&id| id == node_id)
@@ -105,6 +108,7 @@ impl Model {
             }
 
             audio_client::Event::DefaultSink(node_id) => {
+                let node_id = NodeId(node_id);
                 self.default_sink = Some(node_id);
                 if let Some(pos) = self.sinks.id.iter().position(|&id| id == node_id) {
                     self.sinks.active = Some(pos);
@@ -118,6 +122,7 @@ impl Model {
             }
 
             audio_client::Event::DefaultSource(node_id) => {
+                let node_id = NodeId(node_id);
                 self.default_source = Some(node_id);
                 if let Some(pos) = self.sources.id.iter().position(|&id| id == node_id) {
                     self.sources.active = Some(pos);
@@ -131,6 +136,7 @@ impl Model {
             }
 
             audio_client::Event::Node(node_id, node) => {
+                let node_id = NodeId(node_id);
                 if node.is_sink {
                     let pos = if let Some(pos) = self.sinks.id.iter().position(|&id| id == node_id)
                     {
@@ -171,6 +177,7 @@ impl Model {
             }
 
             audio_client::Event::RemoveNode(node_id) => {
+                let node_id = NodeId(node_id);
                 if !self.sinks.remove(node_id) {
                     self.sources.remove(node_id);
                 }
