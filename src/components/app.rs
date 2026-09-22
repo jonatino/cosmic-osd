@@ -257,6 +257,8 @@ pub(crate) struct App {
     active_layouts: Vec<ActiveLayout>,
     wayland_connection: Option<wayland_client::Connection>,
     keyboard_layout_group: Option<usize>,
+    have_sink_volume: bool,
+    have_source_volume: bool,
 }
 
 impl App {
@@ -611,6 +613,8 @@ impl cosmic::Application for App {
             active_layouts: Vec::new(),
             wayland_connection: None,
             keyboard_layout_group: None,
+            have_sink_volume: false,
+            have_source_volume: false,
         };
         let t = app.create_dummy_layer_surface();
         (app, t)
@@ -801,16 +805,25 @@ impl cosmic::Application for App {
                 match self.audio.update(message) {
                     None => Task::none(),
                     Some(super::audio::Response::SinkVolume(value)) => {
-                        let now = Instant::now();
-                        if now.duration_since(self.sink_last_playback) > Duration::from_millis(125)
-                        {
-                            self.sink_last_playback = now;
-                            pipewire::play_audio_volume_change();
+                        // Don't notify the first time we receive volume
+                        if self.have_sink_volume {
+                            let now = Instant::now();
+                            if now.duration_since(self.sink_last_playback) > Duration::from_millis(125)
+                            {
+                                self.sink_last_playback = now;
+                                pipewire::play_audio_volume_change();
+                            }
+                            return self.create_indicator(osd_indicator::Params::SinkVolume(value));
                         }
-                        self.create_indicator(osd_indicator::Params::SinkVolume(value))
+                        self.have_sink_volume = true;
+                        Task::none()
                     }
                     Some(super::audio::Response::SourceVolume(value)) => {
-                        self.create_indicator(osd_indicator::Params::SourceVolume(value))
+                        if self.have_source_volume {
+                            return self.create_indicator(osd_indicator::Params::SourceVolume(value));
+                        }
+                        self.have_source_volume = true;
+                        Task::none()
                     }
                 }
             }
