@@ -15,8 +15,6 @@ pub struct NodeVolume {
 pub struct Model {
     sinks: Nodes,
     sources: Nodes,
-    pub active_sink: NodeVolume,
-    pub active_source: NodeVolume,
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -28,6 +26,15 @@ struct Node {
     mute: bool,
 }
 
+impl Node {
+    fn value(&self) -> NodeVolume {
+        NodeVolume {
+            volume: self.volume,
+            mute: self.mute,
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 struct Nodes {
     active: Option<NodeId>,
@@ -35,6 +42,10 @@ struct Nodes {
 }
 
 impl Nodes {
+    fn active(&self) -> Option<NodeVolume> {
+        Some(self.nodes.get(&self.active?)?.value())
+    }
+
     pub fn remove(&mut self, node_id: NodeId) -> bool {
         self.active.take_if(|active| *active == node_id);
         self.nodes.remove(&node_id).is_some()
@@ -52,16 +63,18 @@ impl Model {
             audio_client::Event::NodeMute(node_id, mute) => {
                 let node_id = NodeId(node_id);
                 if let Some(node) = self.sinks.nodes.get_mut(&node_id) {
+                    let old_value = node.value();
                     node.mute = mute;
-                    if self.sinks.active == Some(node_id) && self.active_sink.mute != mute {
-                        self.active_sink.mute = mute;
-                        return Some(Response::SinkVolume(self.active_source));
+                    let value = node.value();
+                    if self.sinks.active == Some(node_id) && old_value != value {
+                        return Some(Response::SinkVolume(value));
                     }
                 } else if let Some(node) = self.sources.nodes.get_mut(&node_id) {
+                    let old_value = node.value();
                     node.mute = mute;
-                    if self.sources.active == Some(node_id) && self.active_source.mute != mute {
-                        self.active_source.mute = mute;
-                        return Some(Response::SourceVolume(self.active_source));
+                    let value = node.value();
+                    if self.sources.active == Some(node_id) && old_value != value {
+                        return Some(Response::SourceVolume(value));
                     }
                 }
             }
@@ -69,23 +82,18 @@ impl Model {
             audio_client::Event::NodeVolume(node_id, volume, _balance) => {
                 let node_id = NodeId(node_id);
                 if let Some(node) = self.sinks.nodes.get_mut(&node_id) {
+                    let old_value = node.value();
                     node.volume = volume;
-                    if self.sinks.active == Some(node_id) {
-                        let changed = self.active_sink.mute != node.mute
-                            || self.active_sink.volume != node.volume;
-                        self.active_sink.mute = node.mute;
-                        self.active_sink.volume = node.volume;
-
-                        return changed.then_some(Response::SinkVolume(self.active_sink));
+                    let value = node.value();
+                    if self.sinks.active == Some(node_id) && old_value != value {
+                        return Some(Response::SinkVolume(value));
                     }
                 } else if let Some(node) = self.sources.nodes.get_mut(&node_id) {
+                    let old_value = node.value();
                     node.volume = volume;
-                    if self.sources.active == Some(node_id) {
-                        let changed = self.active_source.mute != node.mute
-                            || self.active_source.volume != node.volume;
-                        self.active_source.mute = node.mute;
-                        self.active_source.volume = node.volume;
-                        return changed.then_some(Response::SourceVolume(self.active_source));
+                    let value = node.value();
+                    if self.sources.active == Some(node_id) && old_value != value {
+                        return Some(Response::SourceVolume(value));
                     }
                 }
             }
@@ -93,47 +101,31 @@ impl Model {
             audio_client::Event::DefaultSink(node_id) => {
                 let node_id = NodeId(node_id);
                 self.sinks.active = Some(node_id);
-                if let Some(node) = self.sinks.nodes.get(&node_id) {
-                    self.active_sink.mute = node.mute;
-                    self.active_sink.volume = node.volume;
-                    return Some(Response::SinkVolume(self.active_sink));
+                if let Some(value) = self.sinks.active() {
+                    return Some(Response::SinkVolume(value));
                 }
             }
 
             audio_client::Event::DefaultSource(node_id) => {
                 let node_id = NodeId(node_id);
                 self.sources.active = Some(node_id);
-                if let Some(node) = self.sources.nodes.get(&node_id) {
-                    self.active_source.mute = node.mute;
-                    self.active_source.volume = node.volume;
-                    return Some(Response::SourceVolume(self.active_source));
+                if let Some(value) = self.sources.active() {
+                    return Some(Response::SourceVolume(value));
                 }
             }
 
             audio_client::Event::Node(node_id, node) => {
                 let node_id = NodeId(node_id);
                 if node.is_sink {
-                    let node = self
-                        .sinks
+                    self.sinks
                         .nodes
                         .entry(node_id)
                         .or_insert_with(Node::default);
-
-                    if self.sinks.active == Some(node_id) {
-                        self.active_sink.mute = node.mute;
-                        self.active_sink.volume = node.volume;
-                    }
                 } else {
-                    let node = self
-                        .sources
+                    self.sources
                         .nodes
                         .entry(node_id)
                         .or_insert_with(Node::default);
-
-                    if self.sources.active == Some(node_id) {
-                        self.active_source.mute = node.mute;
-                        self.active_source.volume = node.volume;
-                    }
                 }
             }
 
