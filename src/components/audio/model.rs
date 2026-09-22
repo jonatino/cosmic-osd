@@ -22,16 +22,16 @@ struct NodeId(u32);
 
 #[derive(Debug, Default)]
 struct Node {
-    volume: u32,
-    mute: bool,
+    volume: Option<u32>,
+    mute: Option<bool>,
 }
 
 impl Node {
-    fn value(&self) -> NodeVolume {
-        NodeVolume {
-            volume: self.volume,
-            mute: self.mute,
-        }
+    fn value(&self) -> Option<NodeVolume> {
+        Some(NodeVolume {
+            volume: self.volume?,
+            mute: self.mute?,
+        })
     }
 }
 
@@ -43,7 +43,7 @@ struct Nodes {
 
 impl Nodes {
     fn active(&self) -> Option<NodeVolume> {
-        Some(self.nodes.get(&self.active?)?.value())
+        self.nodes.get(&self.active?)?.value()
     }
 
     pub fn remove(&mut self, node_id: NodeId) -> bool {
@@ -64,16 +64,22 @@ impl Model {
                 let node_id = NodeId(node_id);
                 if let Some(node) = self.sinks.nodes.get_mut(&node_id) {
                     let old_value = node.value();
-                    node.mute = mute;
+                    node.mute = Some(mute);
                     let value = node.value();
-                    if self.sinks.active == Some(node_id) && old_value != value {
+                    if self.sinks.active == Some(node_id)
+                        && old_value != value
+                        && let Some(value) = value
+                    {
                         return Some(Response::SinkVolume(value));
                     }
                 } else if let Some(node) = self.sources.nodes.get_mut(&node_id) {
                     let old_value = node.value();
-                    node.mute = mute;
+                    node.mute = Some(mute);
                     let value = node.value();
-                    if self.sources.active == Some(node_id) && old_value != value {
+                    if self.sources.active == Some(node_id)
+                        && old_value != value
+                        && let Some(value) = value
+                    {
                         return Some(Response::SourceVolume(value));
                     }
                 }
@@ -83,16 +89,22 @@ impl Model {
                 let node_id = NodeId(node_id);
                 if let Some(node) = self.sinks.nodes.get_mut(&node_id) {
                     let old_value = node.value();
-                    node.volume = volume;
+                    node.volume = Some(volume);
                     let value = node.value();
-                    if self.sinks.active == Some(node_id) && old_value != value {
+                    if self.sinks.active == Some(node_id)
+                        && old_value != value
+                        && let Some(value) = value
+                    {
                         return Some(Response::SinkVolume(value));
                     }
                 } else if let Some(node) = self.sources.nodes.get_mut(&node_id) {
                     let old_value = node.value();
-                    node.volume = volume;
+                    node.volume = Some(volume);
                     let value = node.value();
-                    if self.sources.active == Some(node_id) && old_value != value {
+                    if self.sources.active == Some(node_id)
+                        && old_value != value
+                        && let Some(value) = value
+                    {
                         return Some(Response::SourceVolume(value));
                     }
                 }
