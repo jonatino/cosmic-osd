@@ -5,12 +5,18 @@ use std::collections::HashMap;
 
 use cosmic_settings_audio_client::{self as audio_client};
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct NodeVolume {
+    pub volume: u32,
+    pub mute: bool,
+}
+
 #[derive(Debug, Default)]
 pub struct Model {
     sinks: Nodes,
     sources: Nodes,
-    pub active_sink: ActiveNode,
-    pub active_source: ActiveNode,
+    pub active_sink: NodeVolume,
+    pub active_source: NodeVolume,
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -35,15 +41,9 @@ impl Nodes {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct ActiveNode {
-    pub volume: u32,
-    pub mute: bool,
-}
-
 pub enum Response {
-    SinkVolume(u32, bool),
-    SourceVolume(u32, bool),
+    SinkVolume(NodeVolume),
+    SourceVolume(NodeVolume),
 }
 
 impl Model {
@@ -55,13 +55,13 @@ impl Model {
                     node.mute = mute;
                     if self.sinks.active == Some(node_id) && self.active_sink.mute != mute {
                         self.active_sink.mute = mute;
-                        return Some(Response::SinkVolume(node.volume, mute));
+                        return Some(Response::SinkVolume(self.active_source));
                     }
                 } else if let Some(node) = self.sources.nodes.get_mut(&node_id) {
                     node.mute = mute;
                     if self.sources.active == Some(node_id) && self.active_source.mute != mute {
                         self.active_source.mute = mute;
-                        return Some(Response::SourceVolume(node.volume, mute));
+                        return Some(Response::SourceVolume(self.active_source));
                     }
                 }
             }
@@ -76,10 +76,7 @@ impl Model {
                         self.active_sink.mute = node.mute;
                         self.active_sink.volume = node.volume;
 
-                        return changed.then_some(Response::SinkVolume(
-                            self.active_sink.volume,
-                            self.active_sink.mute,
-                        ));
+                        return changed.then_some(Response::SinkVolume(self.active_sink));
                     }
                 } else if let Some(node) = self.sources.nodes.get_mut(&node_id) {
                     node.volume = volume;
@@ -88,10 +85,7 @@ impl Model {
                             || self.active_source.volume != node.volume;
                         self.active_source.mute = node.mute;
                         self.active_source.volume = node.volume;
-                        return changed.then_some(Response::SourceVolume(
-                            self.active_source.volume,
-                            self.active_source.mute,
-                        ));
+                        return changed.then_some(Response::SourceVolume(self.active_source));
                     }
                 }
             }
@@ -102,10 +96,7 @@ impl Model {
                 if let Some(node) = self.sinks.nodes.get(&node_id) {
                     self.active_sink.mute = node.mute;
                     self.active_sink.volume = node.volume;
-                    return Some(Response::SinkVolume(
-                        self.active_sink.volume,
-                        self.active_sink.mute,
-                    ));
+                    return Some(Response::SinkVolume(self.active_sink));
                 }
             }
 
@@ -115,10 +106,7 @@ impl Model {
                 if let Some(node) = self.sources.nodes.get(&node_id) {
                     self.active_source.mute = node.mute;
                     self.active_source.volume = node.volume;
-                    return Some(Response::SourceVolume(
-                        self.active_source.volume,
-                        self.active_source.mute,
-                    ));
+                    return Some(Response::SourceVolume(self.active_source));
                 }
             }
 

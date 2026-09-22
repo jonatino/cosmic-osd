@@ -800,17 +800,17 @@ impl cosmic::Application for App {
             Msg::AudioClient(super::audio::Message::Subscription(message)) => {
                 match self.audio.update(message) {
                     None => Task::none(),
-                    Some(super::audio::Response::SinkVolume(volume, mute)) => {
+                    Some(super::audio::Response::SinkVolume(value)) => {
                         let now = Instant::now();
                         if now.duration_since(self.sink_last_playback) > Duration::from_millis(125)
                         {
                             self.sink_last_playback = now;
                             pipewire::play_audio_volume_change();
                         }
-                        self.create_indicator(osd_indicator::Params::SinkVolume(volume, mute))
+                        self.create_indicator(osd_indicator::Params::SinkVolume(value))
                     }
-                    Some(super::audio::Response::SourceVolume(volume, mute)) => {
-                        self.create_indicator(osd_indicator::Params::SourceVolume(volume, mute))
+                    Some(super::audio::Response::SourceVolume(value)) => {
+                        self.create_indicator(osd_indicator::Params::SourceVolume(value))
                     }
                 }
             }
