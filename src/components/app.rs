@@ -72,6 +72,18 @@ pub struct Args {
 pub enum OsdTask {
     #[clap(about = "Display external display toggle indicator")]
     Display,
+    #[clap(about = "Show the volume indicator without changing volume")]
+    ShowVolume {
+        #[arg(value_parser = clap::value_parser!(u32).range(0..=100))]
+        percent: u32,
+        #[arg(long)]
+        muted: bool,
+    },
+    #[clap(about = "Show the display brightness indicator without changing brightness")]
+    ShowBrightness {
+        #[arg(value_parser = clap::value_parser!(u32).range(0..=100))]
+        percent: u32,
+    },
     #[clap(about = "Show numbers on all displays for identification")]
     IdentifyDisplays,
     #[clap(about = "Dismiss display identification numbers")]
@@ -95,6 +107,18 @@ pub enum OsdTask {
 }
 
 impl OsdTask {
+    fn indicator_params(&self) -> Option<osd_indicator::Params> {
+        match self {
+            Self::ShowVolume { percent, muted } => {
+                Some(osd_indicator::Params::SinkVolume(*percent, *muted))
+            }
+            Self::ShowBrightness { percent } => Some(
+                osd_indicator::Params::DisplayBrightnessExact(*percent as f64 / 100.0),
+            ),
+            _ => None,
+        }
+    }
+
     fn perform(self) -> Task<Msg> {
         let msg = |m| cosmic::action::app(Msg::Zbus(m));
         match self {
@@ -117,6 +141,7 @@ impl OsdTask {
                 });
                 Task::none()
             }
+            OsdTask::ShowVolume { .. } | OsdTask::ShowBrightness { .. } => Task::none(),
             OsdTask::Touchpad => Task::none(),
             OsdTask::Display => Task::none(),
             OsdTask::IdentifyDisplays => Task::none(),
@@ -628,7 +653,9 @@ impl cosmic::Application for App {
         match message {
             Msg::Action(action) => {
                 // Some actions don't require confirmation and execute immediately
-                if matches!(action, OsdTask::IdentifyDisplays) {
+                if let Some(params) = action.indicator_params() {
+                    self.create_indicator(params)
+                } else if matches!(action, OsdTask::IdentifyDisplays) {
                     // Clear dismissed flag to allow showing identifiers
                     self.identifiers_dismissed = false;
                     self.trigger_identify_displays()
@@ -1367,6 +1394,9 @@ impl cosmic::Application for App {
                 OsdTask::Display => "external-display",
                 OsdTask::IdentifyDisplays => "identify-displays",
                 OsdTask::DismissDisplayIdentifiers => "dismiss-display-identifiers",
+                OsdTask::ShowVolume { .. } | OsdTask::ShowBrightness { .. } => {
+                    unreachable!("presentation-only OSD actions do not open confirmation dialogs")
+                }
             };
 
             let title = fl!(
@@ -1504,7 +1534,9 @@ impl cosmic::Application for App {
                 let Ok(cmd) = OsdTask::from_str(&action) else {
                     return Task::none();
                 };
-                if let OsdTask::Touchpad = cmd {
+                if let Some(params) = cmd.indicator_params() {
+                    return self.create_indicator(params);
+                } else if let OsdTask::Touchpad = cmd {
                     return cosmic::task::future(async move {
                         use cosmic_config::{ConfigGet, ConfigSet};
 
